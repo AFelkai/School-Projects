@@ -1,0 +1,336 @@
+%https://www.overleaf.com/12879789fhwmdnrrzyfy#/49218707/
+%
+% These examples are based on the package documentation:
+% http://www.ctan.org/tex-archive/macros/latex/contrib/minted
+%
+\documentclass{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{minted}
+\usepackage{algpseudocode}
+\usepackage{algorithm}
+\usepackage{tikz} % Package for drawing
+\usepackage{hyperref}
+
+
+
+\begin{document}
+
+\title{Project 2 - CSUN Comp 333}
+\author{Aaron Felkai}
+\maketitle
+
+\section{Introduction}
+For this Project you will be tasked with optimizing numerical methods to take advantage of your multicore personal computer. I can't stress using \LaTeX for this lab, if you want your submission to be legible.  You don't have to get too fancy, just include the code, and some form of math notation to help define certain things you wish to evaluate. To insert equations in a sentence, simply write it between two dollar signs. $ 2 + 2 = 5$ like such. You can also write equations that are much larger on their own and reference them in your sentence like here with equation \ref{BigOh1}
+
+\begin{eqnarray}\label{BigOh1}
+   \left | f_{n} - f_{0}   \right | \leq M\left | g_{n} \right |  
+\end{eqnarray}
+
+\section{Adding code}
+
+
+You can use something called minted to insert code in your document. Sometimes they may not be positioned in the same place you want them to be, but that is OK. You can always reference or point them out in your paragraphs. 
+
+\begin{minted}[mathescape, linenos, numbersep=5pt, gobble=0, frame=lines, framesep=2mm]{c} 
+
+            // Use the library call to time your code.
+            // First you count the start time 
+            double ctimestart = omp_get_wtime();
+            // Then type your code or function call
+            
+            // Then measure the time of when the code finishes
+            double ctimeend = omp_get_wtime();
+            // Then you solve for the actual execution time
+            double algTime =  finish - start;
+
+\end{minted}
+
+You can subsequently try multiple approaches to solve a specific problem and bench mark every approach to see which yields the most optimal results. For example, here is the code we attempted in class with some variations:
+
+\begin{minted}[mathescape, linenos, numbersep=5pt, gobble=0, frame=lines, framesep=2mm]{c} 
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#define N       1000000
+
+int main (int argc, char *argv[]) 
+{
+int nthreads, tid, tstart, tend,i, count;
+float a[N], sum, psum;
+double ctime1, ctime2; 
+
+
+for (i=0; i < N; i+=1)
+  a[i] = i * 1.0;
+
+
+  sum =0;
+  ctime1 = omp_get_wtime();
+  #pragma omp parallel for private(i)   
+    for (i=0; i < N; i+= 1)
+     #pragma omp critical
+       sum += a[i]; 
+
+  ctime2 = omp_get_wtime();
+  printf("Critical for took: %f\n", ctime2-ctime1);   
+
+
+  sum =0;
+  ctime1 = omp_get_wtime();
+  #pragma omp parallel for private(i)   
+    for (i=0; i < N; i+= 1)
+     #pragma omp atomic
+       sum += a[i]; 
+
+  ctime2 = omp_get_wtime();
+  printf("Atomic for took: %f\n", ctime2-ctime1);   
+
+sum = 0;
+ctime1 = omp_get_wtime();
+#pragma omp parallel shared(a,nthreads,sum) private(i,tid,psum, tstart, tend)
+  {
+  tid = omp_get_thread_num();
+  nthreads = omp_get_num_threads();
+
+  psum = 0;
+  count=0;
+  tstart = tid * (int) ceil(((double)N/nthreads));
+  tend =  (tid +1) * (int)ceil(((double)N/nthreads));
+  if (tend < N)
+  {
+    for (i = tstart; i < tend ; i+=1)
+      psum += a[i];
+  }
+  else
+  {
+    for (i = tstart; i < N ; i+=1)
+    psum += a[i];
+  }
+
+  //printf("The partial sum is: %f in thread %d \n", psum, tid); 
+  #pragma omp critical
+    sum += psum;
+}
+ctime2 = omp_get_wtime();
+  printf("Sloppyjoe took: %f\n", ctime2-ctime1);  
+
+  sum =0;
+  ctime1 = omp_get_wtime();
+  #pragma omp parallel for private(i) reduction(+:sum)  
+  
+  for (i=0; i < N; i+= 1)
+    sum += a[i]; 
+
+  ctime2 = omp_get_wtime();
+  printf("reduction took: %f\n", ctime2-ctime1);  
+
+  sum =0;
+  int vec = ((double)N/nthreads);
+  ctime1 = omp_get_wtime();
+  #pragma omp parallel for simd schedule(static,vec) reduction(+:sum) 
+  for (i = 0; i < N; i++) {
+    sum += a[i]; 
+  }
+  ctime2 = omp_get_wtime();
+  printf("Vectroized reduction took: %f\n", ctime2-ctime1);   
+
+}
+
+
+
+\end{minted}
+
+
+
+\begin{figure}[!htbp]
+\begin{center}
+\includegraphics[width=5cm]{kitty.jpg}
+\end{center}
+\caption{You can also post pictures}\label{kitty}
+\end{figure}
+
+\section{Methods}
+You have to optimize three different numerical methods in C.
+\subsection{Bilinear Interpolation}
+Bilinear iterpolation is basically doing linear interpolation non-linearally (in 2 dimensions). Lienar interpolation is the idea of connecting points to create new data points. This can be used to approximate the value of functions if just given the function's points. Bilinear interpolation takes that to the next level. By doing the same linear interpolation, but instead on one variable, it does it on two. It is simply doing linear interpolation in one direction, and then doing it again the other directions, and finally collecting the values into one approximation of an equation. Here is my optimized code for bilinear interpolation:
+
+\begin{minted}[mathescape, linenos, numbersep=5pt, gobble=0, frame=lines, framesep=2mm]{c}
+
+PUT CODE IN HERE
+
+\end{minted}
+
+\subsection{Gaussian Elimination}
+Gaussian elimination is a method in linear algebra for solving linear equations. It involves putting values into a matrix, and using specific row operations to reduce the complexity of the values in the matrix to determine some value or solution. With that matrix 'A', many solutions can be solved for with $ Ax=b $. This can be a very powerful way to carry out complex calculations rather easily. The following code is the optimized code for gaussian elimination.
+
+\begin{minted}[mathescape, linenos, numbersep=5pt, gobble=0, frame=lines, framesep=2mm]{c}
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <omp.h>
+
+#define mat_elem(a, y, x, n) (a + ((y) * (n) + (x)))
+
+void swap_row(double *a, double *b, int r1, int r2, int n)
+{
+	double tmp, *p1, *p2;
+	int i;
+
+	if (r1 == r2) return;
+#pragma omp parallel for
+	for (i = 0; i < n; i++) {
+		#pragma omp critical
+		p1 = mat_elem(a, r1, i, n);
+		p2 = mat_elem(a, r2, i, n);
+		tmp = *p1, *p1 = *p2, *p2 = tmp;
+	}
+	tmp = b[r1], b[r1] = b[r2], b[r2] = tmp;
+}
+
+void gauss_eliminate(double *a, double *b, double *x, int n)
+{
+#define A(y, x) (*mat_elem(a, y, x, n))
+	int i, j, col, row, max_row, dia;
+	double max, tmp;
+
+
+	for (dia = 0; dia < n; dia++) {
+		max_row = dia, max = A(dia, dia);
+
+		for (row = dia + 1; row < n; row++)
+			if ((tmp = fabs(A(row, dia))) > max)
+				max_row = row, max = tmp;
+
+		swap_row(a, b, dia, max_row, n);
+
+		for (row = dia + 1; row < n; row++) {
+			tmp = A(row, dia) / A(dia, dia);
+			#pragma omp parallel for
+			for (col = dia + 1; col < n; col++)
+				#pragma omp atomic
+				A(row, col) -= tmp * A(dia, col);
+			A(row, dia) = 0;
+			#pragma omp atomic
+			b[row] -= tmp * b[dia];
+		}
+	}
+	for (row = n - 1; row >= 0; row--) {
+		tmp = b[row];
+		#pragma omp parallel for
+		for (j = n - 1; j > row; j--)
+			#pragma omp atomic
+			tmp -= x[j] * A(row, j);
+		x[row] = tmp / A(row, row);
+	}
+#undef A
+}
+
+int main(void)
+{
+	double ctime1, ctime2;
+	double a[] = {
+		1.00, 0.00, 0.00,  0.00,  0.00, 0.00,
+		1.00, 0.63, 0.39,  0.25,  0.16, 0.10,
+		1.00, 1.26, 1.58,  1.98,  2.49, 3.13,
+		1.00, 1.88, 3.55,  6.70, 12.62, 23.80,
+		1.00, 2.51, 6.32, 15.88, 39.90, 100.28,
+		1.00, 3.14, 9.87, 31.01, 97.41, 306.02
+	};
+	double b[] = { -0.01, 0.61, 0.91, 0.99, 0.60, 0.02 };
+	double x[6];
+	int i;
+
+	ctime1 = omp_get_wtime();
+	gauss_eliminate(a, b, x, 6);
+	ctime2 = omp_get_wtime();
+
+	for (i = 0; i < 6; i++)
+		printf("%g\n", x[i]);
+
+	printf("Took %f\n", ctime2 - ctime1);
+	return(0);
+}
+
+\end{minted}
+Without the OpenMP statements in this optimized code, it runs extremely quickly in series (0.000001 seconds). With the optimizations, it slows the execution down significantly (~0.075823 seconds).
+\subsection{Convolution Integrals}
+Convolution integrals are ways to solve difficult integrals that cannot be solved easily using partial fractions or other integration methods. Given a function of the form $ H(s) = F(s)G(s) $, the convolution integral of that would be $ (f*g)(t) = \int_{0}^{t}f(t-\tau)g(\tau)d\tau $. This allows us to find the inverse of a transformation rather easily. The following code is an optimized version of a solution for convolution integrals.
+
+\begin{minted}[mathescape, linenos, numbersep=5pt, gobble=0, frame=lines, framesep=2mm]{c}
+
+#include <omp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+#define N       1000000
+
+double * convolution(double *f, double *g, int sf, int sg)
+{
+	int sc = sf + sg - 1;
+	int i, j;
+	double * c = (double*)malloc(sc * sizeof(double));
+	#pragma omp parallel for
+	for (i = 0; i < sc; i += 1)
+	{
+		c[i] = 0.0;
+	}
+	#pragma omp parallel for
+	for (i = 0; i < sf; i += 1)
+	{
+		#pragma omp parallel for
+		for (j = 0; j < sg; j += 1)
+		{
+			#pragma omp atomic
+			c[i + j] += f[i] * g[j];
+		}
+	}
+	return c;
+}
+
+
+
+void main(int argc, char *argv[])
+{
+	time_t t;
+	int m = 10;
+	int n = 20;
+	int r;
+	int i;
+
+	double x[10];
+	double h[20];
+	double ctime1, ctime2;
+
+	for (i = 0; i < m; i += 1)
+	{
+		srand(i + 1);
+		r = rand() % 100;
+		x[i] = (double)r;
+	}
+
+	for (i = 0; i < n; i += 1)
+	{
+		srand(i + 1);
+		r = rand() % 100;
+		h[i] = (double)r;
+	}
+
+	ctime1 = omp_get_wtime();
+	double *y = convolution(x, h, m, n);
+	ctime2 = omp_get_wtime();
+
+	printf("Took %f\n", ctime2 - ctime1);
+}
+
+
+\end{minted}
+Interestingly enough, the serial code runs again much quicker than the parallelized code using OpenMP. The serial code runs in about 0.000001 seconds, while the parallel code runs in ~0.032856 seconds.
+
+The serial code running faster than the parallel code can either be attributed to my bad optimization or my computer's specific setup (probably my bad optimization).
+\end{document}
